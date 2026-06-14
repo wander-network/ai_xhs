@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { saveToHistory, getHistory } from './utils/storage';
+import { saveToHistory } from './utils/storage';
 
 export default function Home() {
   // 状态定义

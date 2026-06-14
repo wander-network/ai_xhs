@@ -85,7 +85,9 @@ export async function POST(request: NextRequest) {
                     controller.enqueue(new TextEncoder().encode(text));
                   }
                 } catch (e) {
-                  // 忽略解析错误
+                  // 如果大括号里没有使用 e，就会报错
+                  console.error('API错误');
+                  return new Response('生成失败', { status: 500 });
                 }
               }
             }

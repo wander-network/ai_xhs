@@ -50,10 +50,21 @@ export default function Home() {
       saveToHistory(style, category, keyword, accumulated);
 
     } catch (error) {
-      console.error('生成失败:', error);
-      setGeneratedContent('生成失败，请重试');
-    } finally {
-      setIsGenerating(false);
+      let errorMsg = '生成失败，请重试';
+
+      if (error instanceof Error) {
+        const message = error.message || '';
+
+        if (message.includes('balance') || message.includes('quota')) {
+          errorMsg = 'API 额度不足，请联系管理员充值';
+        } else if (message.includes('timeout')) {
+          errorMsg = '生成超时，请稍后再试';
+        } else if (message.includes('401') || message.includes('key')) {
+          errorMsg = '服务配置错误，请联系管理员';
+        }
+      }
+
+      setGeneratedContent(errorMsg);
     }
   };
 

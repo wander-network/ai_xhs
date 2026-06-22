@@ -32,37 +32,44 @@ export async function POST(request: NextRequest) {
 - 必须全部使用中文，不要出现英文
 - 语气真诚自然，不要像广告`;
 
-    // 调用阿里云 DashScope API（流式）
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
+    // 调用 DeepSeek API（流式）
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`, // 建议用环境变量
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.DASHSCOPE_API_KEY}`,
-        'X-DashScope-SSE': 'enable'  // ← 关键：开启流式输出
       },
       body: JSON.stringify({
-        model: 'qwen-plus',
-        input: {
-          messages: [
-            { role: 'user', content: prompt }
-          ]
-        },
-        parameters: {
-          temperature: 0.8,
-          max_tokens: 1000,
-          incremental_output: true  // ← 关键：增量输出
-        }
-      })
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: '你是一个专业的小红书文案写作助手。' },
+          { role: 'user', content: prompt }  // ← 这里把 prompt 传进去
+        ],
+        stream: true,
+        max_tokens: 4096,
+        temperature: 0.7,
+      }),
     });
 
-    // 处理流式响应（SSE 格式）
-    const reader = response.body?.getReader();
+    // 检查响应是否正常
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API 请求失败: ${response.status} - ${errorText}`);
+    }
+
+    // 检查 body 是否存在
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
+    // 创建流式响应
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          while (reader) {
+          while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
@@ -70,24 +77,22 @@ export async function POST(request: NextRequest) {
             const lines = chunk.split('\n').filter(line => line.trim());
 
             for (const line of lines) {
-              // SSE 格式：data: {...}
-              if (line.startsWith('data:')) {
-                const jsonStr = line.substring(5).trim();
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.substring(6).trim(); // 'data: ' 有6个字符
                 if (jsonStr === '[DONE]') {
                   controller.close();
                   return;
                 }
                 try {
                   const data = JSON.parse(jsonStr);
-                  // 提取增量内容
-                  const text = data.output?.text || '';
+                  // ★ DeepSeek 格式：内容在 choices[0].delta.content
+                  const text = data.choices?.[0]?.delta?.content || '';
                   if (text) {
                     controller.enqueue(new TextEncoder().encode(text));
                   }
-                } catch (e) {
-                  // 如果大括号里没有使用 e，就会报错
-                  console.error('API错误:',e);
-                  return new Response('生成失败', { status: 500 });
+                } catch (parseError) {
+                  console.warn('解析 JSON 失败:', parseError);
+                  // 不抛出错误，继续处理下一条
                 }
               }
             }
@@ -97,7 +102,7 @@ export async function POST(request: NextRequest) {
           console.error('流式处理错误:', err);
           controller.error(err);
         }
-      }
+      },
     });
 
     return new Response(stream, {
@@ -109,6 +114,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('API错误:', error);
-    return new Response('生成失败', { status: 500 });
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : '生成失败' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }

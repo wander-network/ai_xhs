@@ -23,7 +23,7 @@ export default function Home() {
     setGeneratedContent('');  // 清空之前的内容
 
     try {
-      const response = await fetch('/api/qwen-cloud', {
+      const response = await fetch('/api/ds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ style, category, keyword })
